@@ -1,2 +1,3 @@
-click
-intelhex
+click>=8.1.7
+intelhex>=2.3.0
+tomli>=2.0.1; python_version < "3.11"

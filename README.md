@@ -2,11 +2,16 @@
 
 A command-line tool for provisioning DotBot devices and gateways.
 
-```
-Usage: ./dotbot_provision.py [OPTIONS] COMMAND [ARGS]...
+## Installation
 
-  A tool for provisioning DotBot devices and gateways in the context of a
-  SwarmIT-enabled testbed.
+```bash
+pip install dotbot-provision
+```
+
+```
+Usage: dotbot-provision [OPTIONS] COMMAND [ARGS]...
+
+  A tool for provisioning DotBot devices and gateways.
 
 Options:
   --help  Show this message and exit.
@@ -24,19 +29,19 @@ Commands:
 First, download firmware assets:
 
 ```bash
-./dotbot_provision.py fetch --fw-version v0.7.0
+dotbot-provision fetch --fw-version v0.7.0
 ```
 
 Then, to flash a DotBot-v3 while specifying a certain Network ID:
 
 ```bash
-./dotbot_provision.py flash --device dotbot-v3 --fw-version v0.7.0 --network-id 0100
+dotbot-provision flash --device dotbot-v3 --fw-version v0.7.0 --network-id 0100
 ```
 
 And to flash a Mari Gateway:
 
 ```bash
-./dotbot_provision.py flash --device gateway --fw-version v0.7.0 --network-id 0100
+dotbot-provision flash --device gateway --fw-version v0.7.0 --network-id 0100
 ```
 
 ... and it's done!
@@ -48,7 +53,7 @@ You can concatenate it with a regular `flash` command so that all happens in seq
 Like this:
 
 ```bash
-./dotbot_provision.py flash-bringup --programmer-firmware jlink -d ../../../programer-files-dotbot && \
-  ./dotbot_provision.py flash -d dotbot-v3 -f local -n 0100 -s 77
+dotbot-provision flash-bringup --programmer-firmware jlink -d ../../../programer-files-dotbot && \
+  dotbot-provision flash -d dotbot-v3 -f local -n 0100 -s 77
 ```
 ... where the `-s` flag stands for `--sn-starting-digits` and serves as a pattern to identify the connected programming probe. In this case it solves a problem where the flash command incorrectly selects the external J-Link probe instead of the dotbot's (most DotBots come from factory with a serial number starting by 77).

@@ -4,6 +4,16 @@ A command-line tool for provisioning DotBot devices and gateways.
 
 It can fetch, config, and flash pre-built firmwares from repos [SwarmIT](https://github.com/DotBots/swarmit) and [mari](https://github.com/DotBots/mari).
 
+## Requirements
+
+This tool shells out to external flashing utilities:
+
+- `nrfjprog` (Nordic nRF Command Line Tools) for nRF5340 flashing
+- `pyocd` for DAPLink/J-Link OB programmer flashing
+- `JLinkExe` (SEGGER J-Link) for STM32 bootloader flashing
+
+Make sure these are installed and available on your `PATH`.
+
 ## Installation
 
 ```bash

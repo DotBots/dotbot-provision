@@ -2,6 +2,8 @@
 
 A command-line tool for provisioning DotBot devices and gateways.
 
+It can fetch, config, and flash pre-built firmwares from repos [SwarmIT](https://github.com/DotBots/swarmit) and [mari](https://github.com/DotBots/mari).
+
 ## Installation
 
 ```bash

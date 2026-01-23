@@ -252,8 +252,11 @@ def nrfjprog_program(
     verify=True,
     reset=True,
     chiperase=True,
+    sectorerase=False,
     snr=None,
 ):
+    if chiperase and sectorerase:
+        raise ValueError("Use only one of chiperase or sectorerase.")
     args = [nrfjprog, "-f", "NRF53"]
     if snr:
         args += ["-s", str(snr)]
@@ -266,6 +269,8 @@ def nrfjprog_program(
         args += ["--verify"]
     if chiperase:
         args += ["--chiperase"]
+    elif sectorerase:
+        args += ["--sectorerase"]
     if reset:
         args += ["--reset"]
     rc, out = run(args, timeout=120)
@@ -409,6 +414,7 @@ def flash_nrf_one_core(
             verify=True,
             reset=True,
             chiperase=False,
+            sectorerase=True,
             snr=snr,
         )
         print("[OK] Application core programmed.")
@@ -421,6 +427,7 @@ def flash_nrf_one_core(
             verify=True,
             reset=True,
             chiperase=False,
+            sectorerase=True,
             snr=snr,
         )
         print("[OK] Network core programmed.")

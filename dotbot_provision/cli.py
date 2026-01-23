@@ -318,7 +318,6 @@ def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
         url = f"{RELEASE_BASE_URL}/{fw_version}/{name}"
         dest = out_dir / name
         download_file(url, dest)
-        convert_bin_to_hex(dest, APP_FLASH_BASE_ADDR)
 
 
 @cli.command(
@@ -348,6 +347,15 @@ def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
     show_default=True,
     help="Bin directory containing firmware files.",
 )
+@click.option(
+    "--app",
+    "-a",
+    "default_app_name",
+    help=(
+        "Optional app name to flash after provisioning (dotbot-v3 only). "
+        "Looks for <name>-<device>.hex or .bin in the firmware root."
+    ),
+)
 def cmd_flash(
     device: str,
     fw_version: str | None,
@@ -355,6 +363,7 @@ def cmd_flash(
     network_id: str | None,
     sn_starting_digits: str | None,
     bin_dir: Path,
+    default_app_name: str | None,
 ) -> None:
     assets = DEVICE_ASSETS[device]
 
@@ -414,6 +423,35 @@ def cmd_flash(
     if not fw_root.exists():
         raise click.ClickException(f"Firmware root not found: {fw_root}")
 
+    default_app_hex: Path | None = None
+    if device == "dotbot-v3":
+        if default_app_name:
+            name = default_app_name.strip()
+            if not name:
+                raise click.ClickException("--app cannot be empty.")
+            candidate = fw_root / f"{name}-{device}.bin"
+            if candidate.exists():
+                default_app_hex = convert_bin_to_hex(
+                    candidate, APP_FLASH_BASE_ADDR
+                )
+            else:
+                raise click.ClickException(
+                    f"App firmware not found: {candidate}"
+                )
+        else:
+            # default to dotbot app if no name is provided
+            candidate = fw_root / "dotbot-dotbot-v3.bin"
+            if candidate.exists():
+                default_app_hex = convert_bin_to_hex(
+                    candidate, APP_FLASH_BASE_ADDR
+                )
+    else:
+        if default_app_name:
+            click.echo(
+                "[WARN] --app is only supported for dotbot-v3; skipping.",
+                err=True,
+            )
+
     app_hex = fw_root / assets["app"]
     net_hex = fw_root / assets["net"]
     manifest_path = fw_root / CONFIG_MANIFEST_NAME
@@ -471,6 +509,13 @@ def cmd_flash(
     click.echo()
     flash_nrf_both_cores(app_hex, net_hex, nrfjprog_opt=None, snr_opt=snr)
     flash_nrf_one_core(net_hex=config_hex, nrfjprog_opt=None, snr_opt=snr)
+    if default_app_hex is not None:
+        click.echo(f"[INFO] default app hex: {default_app_hex}")
+        flash_nrf_one_core(
+            app_hex=default_app_hex, nrfjprog_opt=None, snr_opt=snr
+        )
+    elif device == "dotbot-v3":
+        click.echo("[INFO] default app hex not found; skipping.")
     click.echo("\n[INFO] ==== Flash Complete ====\n")
     time.sleep(0.2)
     try:

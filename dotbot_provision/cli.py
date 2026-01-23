@@ -41,6 +41,8 @@ CONFIG_ADDR = 0x0103F800
 CONFIG_MAGIC = 0x5753524D
 CONFIG_MANIFEST_NAME = "config-manifest.json"
 RELEASE_BASE_URL = "https://github.com/DotBots/swarmit/releases/download"
+# Application images are linked after the bootloader.
+APP_FLASH_BASE_ADDR = 0x00010000
 # Programmer bring-up files
 GEEHY_PACK_NAME = "Geehy.APM32F1xx_DFP.1.1.0.pack"
 JLINK_REQUIRED_FILES = ("JLink-ob.bin", "stm32f103xb_bl.hex", GEEHY_PACK_NAME)
@@ -126,6 +128,23 @@ def download_file(url: str, dest: Path) -> None:
 
     dest.write_bytes(data)
     click.echo(f"[OK  ] wrote {dest} ({len(data)} bytes)")
+
+
+def convert_bin_to_hex(bin_path: Path, base_addr: int) -> Path:
+    if IntelHex is None:
+        raise click.ClickException(
+            "intelhex not available; install it to convert .bin to .hex."
+        )
+    if not bin_path.exists():
+        raise click.ClickException(f"BIN file not found: {bin_path}")
+    hex_path = bin_path.with_suffix(".hex")
+    ih = IntelHex()
+    ih.frombytes(bin_path.read_bytes(), offset=base_addr)
+    ih.tofile(str(hex_path), "hex")
+    click.echo(
+        f"[OK  ] converted {bin_path.name} -> {hex_path.name} @ 0x{base_addr:08X}"
+    )
+    return hex_path
 
 
 def find_existing_config_hex(fw_root: Path) -> Path | None:
@@ -287,10 +306,19 @@ def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
         "03app_gateway_app-nrf5340-app.hex",
         "03app_gateway_net-nrf5340-net.hex",
     ]
+    example_bins = [
+        "rgbled-dotbot-v3.bin",
+        "dotbot-dotbot-v3.bin",
+    ]
     for name in assets:
         url = f"{RELEASE_BASE_URL}/{fw_version}/{name}"
         dest = out_dir / name
         download_file(url, dest)
+    for name in example_bins:
+        url = f"{RELEASE_BASE_URL}/{fw_version}/{name}"
+        dest = out_dir / name
+        download_file(url, dest)
+        convert_bin_to_hex(dest, APP_FLASH_BASE_ADDR)
 
 
 @cli.command(

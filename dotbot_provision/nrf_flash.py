@@ -89,7 +89,9 @@ def jlink_flash_hex(jlink_exe, device, image_hex, timeout=TIMEOUT_JLINK_SEC):
         raise RuntimeError("J-Link flash failed; see log above.")
 
 
-def pyocd_flash_hex(jlink_bin, device, pack_path: str):
+def pyocd_flash_hex(
+    jlink_bin, device, pack_path: str, probe_uid: str | None = None
+):
     erase_args = [
         "pyocd",
         "erase",
@@ -98,18 +100,24 @@ def pyocd_flash_hex(jlink_bin, device, pack_path: str):
         pack_path,
         "-t",
         str(device),
-        "--uid",
-        "261006773",
     ]
+    if probe_uid:
+        erase_args += ["--uid", probe_uid]
     rc, out = run(erase_args, timeout=60)
     args = ["pyocd", "flash", str(jlink_bin)]
     args += ["--pack", pack_path]
     args += ["-t", str(device)]
+    if probe_uid:
+        args += ["--uid", probe_uid]
     rc, out = run(args, timeout=120)
 
 
 def do_daplink(
-    bl_hex: Path, apm_device: str, jlinktool: str | None, pack_path: str
+    bl_hex: Path,
+    apm_device: str,
+    jlinktool: str | None,
+    pack_path: str,
+    probe_uid: str | None = None,
 ):
     """Flash STM32 bootloader (DAPLink) using external J-Link."""
     jlink_tool = which_tool(
@@ -128,13 +136,15 @@ def do_daplink(
     print("[OK] DAPLink bootloader programmed.")
 
 
-def do_daplink_if(if_hex: Path, apm_device: str, pack_path: str):
+def do_daplink_if(
+    if_hex: Path, apm_device: str, pack_path: str, probe_uid: str | None = None
+):
     """Flash DAPLink interface firmware over SWD using pyOCD."""
     if not if_hex.exists():
         raise FileNotFoundError(f"DAPLink interface image not found: {if_hex}")
 
     print("== Flashing DAPLink interface image via pyOCD ==")
-    pyocd_flash_hex(if_hex, apm_device, pack_path)
+    pyocd_flash_hex(if_hex, apm_device, pack_path, probe_uid=probe_uid)
     print("[OK] DAPLink interface programmed.")
 
 
@@ -144,6 +154,7 @@ def do_jlink(
     apm_device: str,
     jlinktool: str | None,
     pack_path: str,
+    probe_uid: str | None = None,
 ):
     """Flash STM32 bootloader, then J-Link OB image (overwrites BL)."""
     if not jlink_bin.exists():
@@ -160,7 +171,7 @@ def do_jlink(
     time.sleep(5)
 
     print("== Flashing J-Link OB image via pyOCD ==")
-    pyocd_flash_hex(jlink_bin, apm_device, pack_path)
+    pyocd_flash_hex(jlink_bin, apm_device, pack_path, probe_uid=probe_uid)
     print("[OK] J-Link OB programmed.")
 
 
@@ -241,8 +252,11 @@ def nrfjprog_program(
     verify=True,
     reset=True,
     chiperase=True,
+    sectorerase=False,
     snr=None,
 ):
+    if chiperase and sectorerase:
+        raise ValueError("Use only one of chiperase or sectorerase.")
     args = [nrfjprog, "-f", "NRF53"]
     if snr:
         args += ["-s", str(snr)]
@@ -255,6 +269,8 @@ def nrfjprog_program(
         args += ["--verify"]
     if chiperase:
         args += ["--chiperase"]
+    elif sectorerase:
+        args += ["--sectorerase"]
     if reset:
         args += ["--reset"]
     rc, out = run(args, timeout=120)
@@ -398,6 +414,7 @@ def flash_nrf_one_core(
             verify=True,
             reset=True,
             chiperase=False,
+            sectorerase=True,
             snr=snr,
         )
         print("[OK] Application core programmed.")
@@ -410,12 +427,14 @@ def flash_nrf_one_core(
             verify=True,
             reset=True,
             chiperase=False,
+            sectorerase=True,
             snr=snr,
         )
         print("[OK] Network core programmed.")
-        # also need to reset the application core (without programming, just reset)
-        nrfjprog_reset_core(nrfjprog, snr=snr, core="CP_APPLICATION")
-        print("[OK] Application core reset.")
+    # reset both cores
+    time.sleep(0.5)
+    nrfjprog_reset_core(nrfjprog, snr=snr, core="CP_NETWORK")
+    nrfjprog_reset_core(nrfjprog, snr=snr, core="CP_APPLICATION")
 
 
 def nrfjprog_reset_core(nrfjprog, snr=None, core="CP_APPLICATION"):

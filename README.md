@@ -50,6 +50,14 @@ Then, to flash a DotBot-v3 while specifying a certain Network ID:
 dotbot-provision flash --device dotbot-v3 --fw-version v0.7.0 --network-id 0100
 ```
 
+You can also pass `-a <fw-name>` to flash, in addition to bootloader and netcore, a default app firmware:
+
+
+```bash
+dotbot-provision flash --device dotbot-v3 --fw-version v0.7.0 --network-id 0100 -a motors
+```
+
+
 And to flash a Mari Gateway:
 
 ```bash

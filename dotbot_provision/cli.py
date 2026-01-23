@@ -41,6 +41,8 @@ CONFIG_ADDR = 0x0103F800
 CONFIG_MAGIC = 0x5753524D
 CONFIG_MANIFEST_NAME = "config-manifest.json"
 RELEASE_BASE_URL = "https://github.com/DotBots/swarmit/releases/download"
+# Application images are linked after the bootloader.
+APP_FLASH_BASE_ADDR = 0x00010000
 # Programmer bring-up files
 GEEHY_PACK_NAME = "Geehy.APM32F1xx_DFP.1.1.0.pack"
 JLINK_REQUIRED_FILES = ("JLink-ob.bin", "stm32f103xb_bl.hex", GEEHY_PACK_NAME)
@@ -126,6 +128,23 @@ def download_file(url: str, dest: Path) -> None:
 
     dest.write_bytes(data)
     click.echo(f"[OK  ] wrote {dest} ({len(data)} bytes)")
+
+
+def convert_bin_to_hex(bin_path: Path, base_addr: int) -> Path:
+    if IntelHex is None:
+        raise click.ClickException(
+            "intelhex not available; install it to convert .bin to .hex."
+        )
+    if not bin_path.exists():
+        raise click.ClickException(f"BIN file not found: {bin_path}")
+    hex_path = bin_path.with_suffix(".hex")
+    ih = IntelHex()
+    ih.frombytes(bin_path.read_bytes(), offset=base_addr)
+    ih.tofile(str(hex_path), "hex")
+    click.echo(
+        f"[OK  ] converted {bin_path.name} -> {hex_path.name} @ 0x{base_addr:08X}"
+    )
+    return hex_path
 
 
 def find_existing_config_hex(fw_root: Path) -> Path | None:
@@ -287,7 +306,15 @@ def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
         "03app_gateway_app-nrf5340-app.hex",
         "03app_gateway_net-nrf5340-net.hex",
     ]
+    example_bins = [
+        "rgbled-dotbot-v3.bin",
+        "dotbot-dotbot-v3.bin",
+    ]
     for name in assets:
+        url = f"{RELEASE_BASE_URL}/{fw_version}/{name}"
+        dest = out_dir / name
+        download_file(url, dest)
+    for name in example_bins:
         url = f"{RELEASE_BASE_URL}/{fw_version}/{name}"
         dest = out_dir / name
         download_file(url, dest)
@@ -320,6 +347,15 @@ def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
     show_default=True,
     help="Bin directory containing firmware files.",
 )
+@click.option(
+    "--app",
+    "-a",
+    "default_app_name",
+    help=(
+        "Optional app name to flash after provisioning (dotbot-v3 only). "
+        "Looks for <name>-<device>.hex or .bin in the firmware root."
+    ),
+)
 def cmd_flash(
     device: str,
     fw_version: str | None,
@@ -327,6 +363,7 @@ def cmd_flash(
     network_id: str | None,
     sn_starting_digits: str | None,
     bin_dir: Path,
+    default_app_name: str | None,
 ) -> None:
     assets = DEVICE_ASSETS[device]
 
@@ -386,6 +423,35 @@ def cmd_flash(
     if not fw_root.exists():
         raise click.ClickException(f"Firmware root not found: {fw_root}")
 
+    default_app_hex: Path | None = None
+    if device == "dotbot-v3":
+        if default_app_name:
+            name = default_app_name.strip()
+            if not name:
+                raise click.ClickException("--app cannot be empty.")
+            candidate = fw_root / f"{name}-{device}.bin"
+            if candidate.exists():
+                default_app_hex = convert_bin_to_hex(
+                    candidate, APP_FLASH_BASE_ADDR
+                )
+            else:
+                raise click.ClickException(
+                    f"App firmware not found: {candidate}"
+                )
+        else:
+            # default to dotbot app if no name is provided
+            candidate = fw_root / "dotbot-dotbot-v3.bin"
+            if candidate.exists():
+                default_app_hex = convert_bin_to_hex(
+                    candidate, APP_FLASH_BASE_ADDR
+                )
+    else:
+        if default_app_name:
+            click.echo(
+                "[WARN] --app is only supported for dotbot-v3; skipping.",
+                err=True,
+            )
+
     app_hex = fw_root / assets["app"]
     net_hex = fw_root / assets["net"]
     manifest_path = fw_root / CONFIG_MANIFEST_NAME
@@ -440,9 +506,18 @@ def cmd_flash(
         )
     else:
         click.echo(f"[INFO] using existing config hex: {config_hex}")
+    click.echo()
     flash_nrf_both_cores(app_hex, net_hex, nrfjprog_opt=None, snr_opt=snr)
     flash_nrf_one_core(net_hex=config_hex, nrfjprog_opt=None, snr_opt=snr)
+    if default_app_hex is not None:
+        click.echo(f"[INFO] default app hex: {default_app_hex}")
+        flash_nrf_one_core(
+            app_hex=default_app_hex, nrfjprog_opt=None, snr_opt=snr
+        )
+    elif device == "dotbot-v3":
+        click.echo("[INFO] default app hex not found; skipping.")
     click.echo("\n[INFO] ==== Flash Complete ====\n")
+    time.sleep(0.2)
     try:
         readback_net_id = read_net_id(snr=snr)
         readback_device_id = read_device_id(snr=snr)
@@ -511,7 +586,13 @@ def cmd_read_config(sn_starting_digits: str | None) -> None:
     type=click.Path(path_type=Path, file_okay=False, dir_okay=True),
     required=True,
 )
-def cmd_flash_bringup(programmer_firmware: str, files_dir: Path) -> None:
+@click.option(
+    "--probe-uid",
+    help="pyOCD probe UID (use when multiple probes are connected).",
+)
+def cmd_flash_bringup(
+    programmer_firmware: str, files_dir: Path, probe_uid: str | None
+) -> None:
     files_dir = files_dir.expanduser().resolve()
     if not files_dir.exists():
         raise click.ClickException(f"files-dir does not exist: {files_dir}")
@@ -530,6 +611,8 @@ def cmd_flash_bringup(programmer_firmware: str, files_dir: Path) -> None:
 
     click.echo(f"[INFO] programmer: {programmer_firmware}")
     click.echo(f"[INFO] files-dir: {files_dir}")
+    if probe_uid:
+        click.echo(f"[INFO] probe uid: {probe_uid}")
     if programmer_firmware == "jlink":
         jlink_bin = (files_dir / "JLink-ob.bin").resolve()
         bl_hex = (files_dir / "stm32f103xb_bl.hex").resolve()
@@ -540,16 +623,26 @@ def cmd_flash_bringup(programmer_firmware: str, files_dir: Path) -> None:
             apm_device=APM_DEVICE,
             jlinktool=None,
             pack_path=pack_path,
+            probe_uid=probe_uid,
         )
     elif programmer_firmware == "daplink":
         bl_hex = (files_dir / "stm32f103xb_bl.hex").resolve()
         if_hex = (files_dir / "stm32f103xb_if.hex").resolve()
         pack_path = str((files_dir / GEEHY_PACK_NAME).resolve())
         do_daplink(
-            bl_hex, apm_device=APM_DEVICE, jlinktool=None, pack_path=pack_path
+            bl_hex,
+            apm_device=APM_DEVICE,
+            jlinktool=None,
+            pack_path=pack_path,
+            probe_uid=probe_uid,
         )
         time.sleep(1.0)
-        do_daplink_if(if_hex, apm_device=APM_DEVICE, pack_path=pack_path)
+        do_daplink_if(
+            if_hex,
+            apm_device=APM_DEVICE,
+            pack_path=pack_path,
+            probe_uid=probe_uid,
+        )
     else:
         raise click.ClickException(
             f"Invalid programmer firmware: {programmer_firmware}"

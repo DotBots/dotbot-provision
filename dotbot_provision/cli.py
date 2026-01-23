@@ -440,9 +440,11 @@ def cmd_flash(
         )
     else:
         click.echo(f"[INFO] using existing config hex: {config_hex}")
+    click.echo()
     flash_nrf_both_cores(app_hex, net_hex, nrfjprog_opt=None, snr_opt=snr)
     flash_nrf_one_core(net_hex=config_hex, nrfjprog_opt=None, snr_opt=snr)
     click.echo("\n[INFO] ==== Flash Complete ====\n")
+    time.sleep(0.2)
     try:
         readback_net_id = read_net_id(snr=snr)
         readback_device_id = read_device_id(snr=snr)
@@ -511,7 +513,13 @@ def cmd_read_config(sn_starting_digits: str | None) -> None:
     type=click.Path(path_type=Path, file_okay=False, dir_okay=True),
     required=True,
 )
-def cmd_flash_bringup(programmer_firmware: str, files_dir: Path) -> None:
+@click.option(
+    "--probe-uid",
+    help="pyOCD probe UID (use when multiple probes are connected).",
+)
+def cmd_flash_bringup(
+    programmer_firmware: str, files_dir: Path, probe_uid: str | None
+) -> None:
     files_dir = files_dir.expanduser().resolve()
     if not files_dir.exists():
         raise click.ClickException(f"files-dir does not exist: {files_dir}")
@@ -530,6 +538,8 @@ def cmd_flash_bringup(programmer_firmware: str, files_dir: Path) -> None:
 
     click.echo(f"[INFO] programmer: {programmer_firmware}")
     click.echo(f"[INFO] files-dir: {files_dir}")
+    if probe_uid:
+        click.echo(f"[INFO] probe uid: {probe_uid}")
     if programmer_firmware == "jlink":
         jlink_bin = (files_dir / "JLink-ob.bin").resolve()
         bl_hex = (files_dir / "stm32f103xb_bl.hex").resolve()
@@ -540,16 +550,26 @@ def cmd_flash_bringup(programmer_firmware: str, files_dir: Path) -> None:
             apm_device=APM_DEVICE,
             jlinktool=None,
             pack_path=pack_path,
+            probe_uid=probe_uid,
         )
     elif programmer_firmware == "daplink":
         bl_hex = (files_dir / "stm32f103xb_bl.hex").resolve()
         if_hex = (files_dir / "stm32f103xb_if.hex").resolve()
         pack_path = str((files_dir / GEEHY_PACK_NAME).resolve())
         do_daplink(
-            bl_hex, apm_device=APM_DEVICE, jlinktool=None, pack_path=pack_path
+            bl_hex,
+            apm_device=APM_DEVICE,
+            jlinktool=None,
+            pack_path=pack_path,
+            probe_uid=probe_uid,
         )
         time.sleep(1.0)
-        do_daplink_if(if_hex, apm_device=APM_DEVICE, pack_path=pack_path)
+        do_daplink_if(
+            if_hex,
+            apm_device=APM_DEVICE,
+            pack_path=pack_path,
+            probe_uid=probe_uid,
+        )
     else:
         raise click.ClickException(
             f"Invalid programmer firmware: {programmer_firmware}"

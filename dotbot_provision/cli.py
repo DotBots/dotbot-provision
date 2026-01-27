@@ -307,8 +307,11 @@ def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
         "03app_gateway_net-nrf5340-net.hex",
     ]
     example_bins = [
-        "rgbled-dotbot-v3.bin",
         "dotbot-dotbot-v3.bin",
+        "spin-dotbot-v3.bin",
+        "rgbled-dotbot-v3.bin",
+        "move-dotbot-v3.bin",
+        "motors-dotbot-v3.bin",
     ]
     for name in assets:
         url = f"{RELEASE_BASE_URL}/{fw_version}/{name}"

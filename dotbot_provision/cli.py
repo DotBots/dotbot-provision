@@ -519,7 +519,7 @@ def cmd_flash(
         )
     elif device == "dotbot-v3":
         click.echo("[INFO] default app hex not found; skipping.")
-    click.echo("\n[INFO] ==== Flash Complete ====\n")
+    click.secho("\n[INFO] ==== Flash Complete ====\n", fg="green")
     time.sleep(0.2)
     try:
         readback_net_id = read_net_id(snr=snr)
@@ -527,8 +527,9 @@ def cmd_flash(
     except RuntimeError as exc:
         click.echo(f"[WARN] readback failed: {exc}", err=True)
         return
-    click.echo(f"[INFO] readback net_id: {readback_net_id}")
-    click.echo(f"[INFO] readback device_id: {readback_device_id}")
+    click.echo(f"[INFO] readback values:")
+    click.echo(f"[INFO] net_id: {readback_net_id}")
+    click.echo(f"[INFO] device_id: {readback_device_id} (last 6 digits: {readback_device_id[-6:]})")
 
 
 @cli.command("flash-hex", help="Flash explicit app/net hex files.")

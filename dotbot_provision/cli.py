@@ -529,7 +529,10 @@ def cmd_flash(
         return
     click.echo(f"[INFO] readback values:")
     click.echo(f"[INFO] net_id: {readback_net_id}")
-    click.echo(f"[INFO] device_id: {readback_device_id} (last 6 digits: {readback_device_id[-6:]})")
+    last_6_digits_spaced = " ".join(
+        readback_device_id[-6:][i:i+2] for i in range(0, len(readback_device_id[-6:]), 2)
+    )
+    click.echo(f"[INFO] device_id: {readback_device_id} (last 6 digits: {last_6_digits_spaced})")
 
 
 @cli.command("flash-hex", help="Flash explicit app/net hex files.")
@@ -571,7 +574,10 @@ def cmd_read_config(sn_starting_digits: str | None) -> None:
         click.echo(f"[WARN] readback failed: {exc}", err=True)
         return
     click.echo(f"[INFO] readback net_id: {readback_net_id}")
-    click.echo(f"[INFO] readback device_id: {readback_device_id}")
+    last_6_digits_spaced = " ".join(
+        readback_device_id[-6:][i:i+2] for i in range(0, len(readback_device_id[-6:]), 2)
+    )
+    click.echo(f"[INFO] readback device_id: {readback_device_id} (last 6 digits: {last_6_digits_spaced})")
 
 
 @cli.command(

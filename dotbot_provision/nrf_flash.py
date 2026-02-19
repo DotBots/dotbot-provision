@@ -126,6 +126,7 @@ def do_daplink(
         candidates=[
             # r"C:\Program Files\SEGGER\JLink_V818\JLink.exe",
             "/usr/local/bin/JLinkExe",
+            "/usr/bin/JLinkExe",
         ],
     )
     if not bl_hex.exists():
@@ -183,6 +184,7 @@ def pick_last_jlink_snr(nrfjprog_opt=None):
         candidates=[
             # r"C:\Program Files\Nordic Semiconductor\nrf-command-line-tools\bin\nrfjprog.exe"
             "/usr/local/bin/nrfjprog",
+            "/usr/bin/nrfjprog",
         ],
     )
 
@@ -209,6 +211,7 @@ def pick_matching_jlink_snr(
         candidates=[
             # r"C:\Program Files\Nordic Semiconductor\nrf-command-line-tools\bin\nrfjprog.exe"
             "/usr/local/bin/nrfjprog",
+            "/usr/bin/nrfjprog",
         ],
     )
     rc2, out2 = run([nrfjprog, "--ids"], timeout=10)
@@ -293,6 +296,7 @@ def read_device_id(snr: str | None = None) -> str:
         candidates=[
             # r"C:\Program Files\Nordic Semiconductor\nrf-command-line-tools\bin\nrfjprog.exe"
             "/usr/local/bin/nrfjprog",
+            "/usr/bin/nrfjprog",
         ],
     )
     args = [nrfjprog, "-f", "NRF53"]
@@ -314,6 +318,7 @@ def read_net_id(snr: str | None = None) -> str:
         candidates=[
             # r"C:\Program Files\Nordic Semiconductor\nrf-command-line-tools\bin\nrfjprog.exe"
             "/usr/local/bin/nrfjprog",
+            "/usr/bin/nrfjprog",
         ],
     )
     args = [nrfjprog, "-f", "NRF53"]
@@ -344,6 +349,7 @@ def flash_nrf_both_cores(
         candidates=[
             # r"C:\Program Files\Nordic Semiconductor\nrf-command-line-tools\bin\nrfjprog.exe"
             "/usr/local/bin/nrfjprog",
+            "/usr/bin/nrfjprog",
         ],
     )
 
@@ -399,6 +405,7 @@ def flash_nrf_one_core(
         candidates=[
             # r"C:\Program Files\Nordic Semiconductor\nrf-command-line-tools\bin\nrfjprog.exe"
             "/usr/local/bin/nrfjprog",
+            "/usr/bin/nrfjprog",
         ],
     )
 

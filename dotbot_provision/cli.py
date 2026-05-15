@@ -40,6 +40,11 @@ VALID_PROGRAMMERS = ("jlink", "daplink")
 CONFIG_ADDR = 0x0103F800
 CONFIG_MAGIC = 0x5753524D
 CONFIG_MANIFEST_NAME = "config-manifest.json"
+# LH2 calibration is appended to the swarmit config page after (magic, net_id).
+# Matches swarmit's swarmit_config_t and the format produced by
+# dotbot-lh2-calibration (1-byte count + N matrices of 3x3 int32 LE).
+LH2_MATRIX_BYTES = 3 * 3 * 4  # 3x3 int32 matrix
+LH2_MAX_HOMOGRAPHIES = 16
 RELEASE_BASE_URL = "https://github.com/DotBots/swarmit/releases/download"
 # Application images are linked after the bootloader.
 APP_FLASH_BASE_ADDR = 0x00010000
@@ -163,18 +168,66 @@ def make_config_hex_path(
     return fw_root / f"config-{device}-{fw_version}-{net_id_hex}-{ts}.hex"
 
 
-def create_config_hex(dest: Path, net_id_value: int) -> None:
+def load_calibration_file(path: Path) -> tuple[int, bytes]:
+    """Parse a swarmit LH2 calibration file: 1-byte count + N*36 bytes."""
+    data = path.read_bytes()
+    if len(data) < 1 or (len(data) - 1) % LH2_MATRIX_BYTES != 0:
+        raise click.ClickException(
+            f"Invalid calibration file size: expected 1+N*{LH2_MATRIX_BYTES} "
+            f"bytes (count byte + matrices), got {len(data)}"
+        )
+    count = data[0]
+    matrices = data[1:]
+    expected = len(matrices) // LH2_MATRIX_BYTES
+    if count != expected:
+        raise click.ClickException(
+            f"Invalid calibration file: count byte ({count}) does not match "
+            f"matrix payload length ({expected})"
+        )
+    if count == 0:
+        raise click.ClickException(
+            "Invalid calibration file: homography count cannot be zero"
+        )
+    if count > LH2_MAX_HOMOGRAPHIES:
+        raise click.ClickException(
+            f"Invalid calibration file: homography count {count} exceeds "
+            f"LH2 limit ({LH2_MAX_HOMOGRAPHIES})"
+        )
+    return count, matrices
+
+
+def _write_word_le(ih, addr: int, word: int) -> None:
+    ih[addr + 0] = (word >> 0) & 0xFF
+    ih[addr + 1] = (word >> 8) & 0xFF
+    ih[addr + 2] = (word >> 16) & 0xFF
+    ih[addr + 3] = (word >> 24) & 0xFF
+
+
+def create_config_hex(
+    dest: Path,
+    net_id_value: int,
+    calibration: tuple[int, bytes] | None = None,
+) -> None:
     if IntelHex is None:
         raise click.ClickException(
             "intelhex not available; install it to build config hex."
         )
     ih = IntelHex()
-    for offset, word in enumerate((CONFIG_MAGIC, net_id_value)):
-        addr = CONFIG_ADDR + offset * 4
-        ih[addr + 0] = (word >> 0) & 0xFF
-        ih[addr + 1] = (word >> 8) & 0xFF
-        ih[addr + 2] = (word >> 16) & 0xFF
-        ih[addr + 3] = (word >> 24) & 0xFF
+    # Layout matches swarmit_config_t in repos/swarmit/device/network_core/Source/main.c
+    # and mari_app_config_t in repos/mari/app/03app_gateway_net/main.c:
+    #   offset 0:  magic (uint32 LE)
+    #   offset 4:  has_net_id (uint32 LE)        — 1 means the net_id below is provisioned
+    #   offset 8:  net_id (uint32 LE)
+    #   offset 12: homography_count (uint32 LE)  — swarmit only; meaningful only with --calibration
+    #   offset 16: homographies[N][3][3] (int32 LE) — swarmit only
+    _write_word_le(ih, CONFIG_ADDR + 0, CONFIG_MAGIC)
+    _write_word_le(ih, CONFIG_ADDR + 4, 1)
+    _write_word_le(ih, CONFIG_ADDR + 8, net_id_value)
+    if calibration is not None:
+        count, matrices = calibration
+        _write_word_le(ih, CONFIG_ADDR + 12, count)
+        for i, b in enumerate(matrices):
+            ih[CONFIG_ADDR + 16 + i] = b
     dest.parent.mkdir(parents=True, exist_ok=True)
     ih.tofile(str(dest), "hex")
 
@@ -199,6 +252,7 @@ def build_manifest_payload(
     device: str,
     fw_version: str,
     net_id_hex: str,
+    calibration_hex: str | None = None,
 ) -> dict:
     created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     return {
@@ -208,12 +262,21 @@ def build_manifest_payload(
         "network_id": net_id_hex,
         "config_addr": f"0x{CONFIG_ADDR:08X}",
         "magic": f"0x{CONFIG_MAGIC:08X}",
+        # Stored inline as hex (count byte + matrices, same bytes as the
+        # input file). Calibration data is small (typically <100 B, capped
+        # well under 1 kB at 16 matrices), so inlining keeps the manifest
+        # self-contained and human-inspectable.
+        "calibration": calibration_hex,
         "created_at": created_at,
     }
 
 
 def manifest_matches(
-    payload: dict, device: str, fw_version: str, net_id_hex: str
+    payload: dict,
+    device: str,
+    fw_version: str,
+    net_id_hex: str,
+    calibration_hex: str | None = None,
 ) -> bool:
     if not isinstance(payload, dict):
         return False
@@ -223,6 +286,7 @@ def manifest_matches(
         and payload.get("network_id") == net_id_hex
         and payload.get("config_addr") == f"0x{CONFIG_ADDR:08X}"
         and payload.get("magic") == f"0x{CONFIG_MAGIC:08X}"
+        and payload.get("calibration") == calibration_hex
         and isinstance(payload.get("config_hex"), str)
     )
 
@@ -339,6 +403,17 @@ def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
 )
 @click.option("--network-id", "-n", help="16-bit hex network ID, e.g. 0100.")
 @click.option(
+    "--calibration",
+    "-l",
+    "calibration_path",
+    type=click.Path(path_type=Path, dir_okay=False, exists=True),
+    help=(
+        "Optional LH2 calibration file to bake into the swarmit config page "
+        "(1-byte count + N*36 bytes, same format as `swarmit calibrate-lh2`). "
+        "Only valid for --device dotbot-v3."
+    ),
+)
+@click.option(
     "--sn-starting-digits",
     "-s",
     help="Serial number pattern to use for auto-selection, e.g. 77.",
@@ -364,6 +439,7 @@ def cmd_flash(
     fw_version: str | None,
     config_path: Path | None,
     network_id: str | None,
+    calibration_path: Path | None,
     sn_starting_digits: str | None,
     bin_dir: Path,
     default_app_name: str | None,
@@ -422,6 +498,22 @@ def cmd_flash(
         )
 
     net_id_val, net_id_hex = net_id
+
+    calibration_data: tuple[int, bytes] | None = None
+    calibration_hex: str | None = None
+    if calibration_path is not None:
+        if device != "dotbot-v3":
+            raise click.ClickException(
+                "--calibration is only valid for --device dotbot-v3 "
+                "(gateway firmware does not have LH2 homographies)."
+            )
+        count, matrices = load_calibration_file(calibration_path)
+        calibration_data = (count, matrices)
+        calibration_hex = (bytes([count]) + matrices).hex()
+        click.echo(
+            f"[INFO] calibration: {count} matrices from {calibration_path}"
+        )
+
     fw_root = resolve_fw_root(bin_dir, fw_version)
     if not fw_root.exists():
         raise click.ClickException(f"Firmware root not found: {fw_root}")
@@ -464,7 +556,9 @@ def cmd_flash(
         click.echo(
             f"[INFO] loaded manifest {manifest_path}: {json.dumps(manifest, indent=2)}"
         )
-        if manifest_matches(manifest, device, fw_version, net_id_hex):
+        if manifest_matches(
+            manifest, device, fw_version, net_id_hex, calibration_hex
+        ):
             candidate = fw_root / manifest["config_hex"]
             if candidate.exists():
                 config_hex = candidate
@@ -497,10 +591,14 @@ def cmd_flash(
     click.echo(f"[INFO] config hex: {config_hex}")
 
     if not config_hex.exists():
-        create_config_hex(config_hex, net_id_val)
+        create_config_hex(config_hex, net_id_val, calibration=calibration_data)
         click.echo(f"[OK  ] wrote config hex: {config_hex}")
         manifest_payload = build_manifest_payload(
-            config_hex, device, fw_version, net_id_hex
+            config_hex,
+            device,
+            fw_version,
+            net_id_hex,
+            calibration_hex=calibration_hex,
         )
         write_config_manifest(manifest_path, manifest_payload)
         click.echo(f"[OK  ] wrote config manifest: {manifest_path}")

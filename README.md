@@ -1,4 +1,17 @@
-# `dotbot-provision`
+# `dotbot-provision` — DEPRECATED
+
+> **This package is deprecated as of 2026-05** and has been folded
+> into the unified [`dotbot`](https://github.com/DotBots/PyDotBot)
+> package. New users should migrate:
+>
+> ```bash
+> pip install dotbot[provision]
+> dotbot testbed provision --help
+> ```
+>
+> The standalone `dotbot-provision` package emits a
+> `DeprecationWarning` at import time and will be archived after a
+> 6-month grace period (around 2026-11). Functionality is identical.
 
 A command-line tool for provisioning DotBot devices and gateways.
 

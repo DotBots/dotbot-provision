@@ -214,7 +214,7 @@ def create_config_hex(
         )
     ih = IntelHex()
     # Layout matches swarmit_config_t in repos/swarmit/device/network_core/Source/main.c
-    # and mari_app_config_t in repos/mari/app/03app_gateway_net/main.c:
+    # and mari_app_config_t in repos/mari/firmware/app/03app_gateway_net/main.c:
     #   offset 0:  magic (uint32 LE)
     #   offset 4:  has_net_id (uint32 LE)        — 1 means the net_id below is provisioned
     #   offset 8:  net_id (uint32 LE)
@@ -340,9 +340,9 @@ def cmd_fetch(fw_version: str, local_root: Path | None, bin_dir: Path) -> None:
             "netcore-nrf5340-net.hex": local_root
             / "device/network_core/Output/nrf5340-net/Debug/Exe/netcore-nrf5340-net.hex",
             "03app_gateway_app-nrf5340-app.hex": local_root
-            / "mari/app/03app_gateway_app/Output/nrf5340-app/Debug/Exe/03app_gateway_app-nrf5340-app.hex",
+            / "mari/firmware/app/03app_gateway_app/Output/nrf5340-app/Debug/Exe/03app_gateway_app-nrf5340-app.hex",
             "03app_gateway_net-nrf5340-net.hex": local_root
-            / "mari/app/03app_gateway_net/Output/nrf5340-net/Debug/Exe/03app_gateway_net-nrf5340-net.hex",
+            / "mari/firmware/app/03app_gateway_net/Output/nrf5340-net/Debug/Exe/03app_gateway_net-nrf5340-net.hex",
         }
 
         missing = [name for name, src in mapping.items() if not src.exists()]
